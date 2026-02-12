@@ -1,0 +1,14 @@
+
+{
+  "manifest_version": 3,
+  "name": "ChatGPT Helper Dev",
+  "version": "0.1",
+  "description": "UI enhancements for chatgpt.com",
+  "content_scripts": [
+    {
+      "matches": ["https://chatgpt.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
