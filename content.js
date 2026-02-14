@@ -7,34 +7,26 @@
     style_sidebar();
     const prompt_list = document.createElement('div');
     sidebar.appendChild(prompt_list);
+    document.body.appendChild(sidebar);
 
     let current_path = location.pathname;
 
-    let observer;
+    const dom_observer = new MutationObserver((mutations) => {
+        handle_mutations(mutations);
+    }); 
 
-
-    function waitForElement(selector, cb, timeoutMs = 10000) {
-        const el = document.querySelector(selector);
-        if (el) {
-            cb(el);
-            return;
-        }
-
-        const obs = new MutationObserver(() => {
-            const el = document.querySelector(selector);
-            if (el) {
-                obs.disconnect();
-                cb(el);
-            }
-        });
-
-        obs.observe(document.documentElement, {
-            childList: true,
-            subtree: true
+    dom_observer.observe(document.documentElement, {
+        childList: true,
+        subtree: true
+    });
+    if ('navigation' in window) {
+        window.navigation.addEventListener("navigate", (event) => {
+            handle_location_change();
         });
     }
 
     function style_sidebar() {
+        // Styles the "prompts" sidebar
 
         sidebar.id = 'tm-jump-sidebar';
 
@@ -55,7 +47,6 @@
                 Prompts
             </div>`;
     }
-
 
     function addStoreButton(article) {
         // Adds a "store" button to the answer
@@ -96,12 +87,7 @@
         const item = document.createElement('div');
         item.title = text;
 
-            // TODO: ok maybe cut first 50 OR until first '.'
-
-        item.textContent = n + text.split('\n')[0].slice(0, 50); 
-
-
-
+        item.textContent = n + text.split('.')[0].slice(0, 50); 
         item.style.cursor = 'pointer';
         item.style.marginBottom = '6px';
         item.style.borderBottom = '1px solid #333';
@@ -114,13 +100,18 @@
         prompt_list.appendChild(item);
     }
 
+    function handle_location_change() {
+        // When URL changes we reset the sidebar and seen list.
+        prompt_list.replaceChildren();
+        seen = new WeakSet();
+    }
+
     function handle_mutations(mutations) {
-            
+        // DOM change handler
         for (const m of mutations) {
             for (const node of m.addedNodes) {
                 if (!(node instanceof HTMLElement)) continue;
 
-                // Direct article
                 if (node.matches?.('article[data-turn="user"]')) {
                     itemize(node)
                 } else if (node.matches?.('article[data-turn="assistant"]')) {
@@ -141,27 +132,4 @@
             }
         }
     }
-
-// Running logic starts here
-
-    waitForElement('#main', (main) => {
-        if (!sidebar.isConnected) {
-            document.body.appendChild(sidebar);
-        }
-        observer = new MutationObserver((mutations) => {
-            if (current_path != location.pathname) {
-                current_path = location.pathname;
-                prompt_list.replaceChildren();
-                seen = new WeakSet();
-            }
-            handle_mutations(mutations);
-        }); 
-
-        observer.observe(main, {
-            childList: true,
-            subtree: true
-        });
-    });
-
-
 })();
