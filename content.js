@@ -1,7 +1,19 @@
 (function () {
     'use strict';
 
-    function waitForElement(selector, cb) {
+    let seen = new WeakSet();
+
+    const sidebar = document.createElement('div');
+    style_sidebar();
+    const prompt_list = document.createElement('div');
+    sidebar.appendChild(prompt_list);
+
+    let current_path = location.pathname;
+
+    let observer;
+
+
+    function waitForElement(selector, cb, timeoutMs = 10000) {
         const el = document.querySelector(selector);
         if (el) {
             cb(el);
@@ -22,12 +34,8 @@
         });
     }
 
-    let current_path = location.pathname;
-    console.log("current_path initial value: ", current_path);
+    function style_sidebar() {
 
-    waitForElement('#main', (main) => {
-        console.log("waitForElement #main fired");
-        const sidebar = document.createElement('div');
         sidebar.id = 'tm-jump-sidebar';
 
         sidebar.style.position = 'fixed';
@@ -45,86 +53,79 @@
         sidebar.innerHTML = `
             <div style="font-weight:bold; margin-bottom:8px;">
                 Prompts
-            </div>
-        `;
-
-        document.body.appendChild(sidebar);
-
-        const seen = new WeakSet();
-
-        function addStoreButton(article) {
-            // Adds a "store" button to the answer
-            // TODO: fill in the onclick functionality
-            if (article.querySelector('.tm-store-btn')) return;
-
-            const btn = document.createElement('button');
-            btn.textContent = 'Store';
-            btn.className = 'tm-store-btn';
-
-            btn.style.margin = '4px';
-            btn.style.padding = '2px 6px';
-            btn.style.fontSize = '12px';
-            btn.style.cursor = 'pointer';
-
-            btn.onclick = () => {
-                console.log('Store clicked for article', article.dataset.turnId || article.dataset.testid);
-            };
-
-            article.appendChild(btn);
-        }
+            </div>`;
+    }
 
 
-        function itemize(article) {
-            // Adds a quicklink to the "prompts" sidebar
-            if (seen.has(article)) return;
-            seen.add(article);
-            const textDiv = article.querySelector('div.whitespace-pre-wrap');
-            if (!textDiv) return;
+    function addStoreButton(article) {
+        // Adds a "store" button to the answer
+        // TODO: fill in the onclick functionality
+        if (article.querySelector('.tm-store-btn')) return;
 
-            const text = textDiv.innerText.trim();
-            if (!text) return;
+        const btn = document.createElement('button');
+        btn.textContent = 'Store';
+        btn.className = 'tm-store-btn';
 
-            const testid = article.getAttribute('data-testid');
-            const n = Math.floor(Number(testid.split('-').pop()) / 2 + 1);
+        btn.style.margin = '4px';
+        btn.style.padding = '2px 6px';
+        btn.style.fontSize = '12px';
+        btn.style.cursor = 'pointer';
 
+        btn.onclick = () => {
+            console.log('Store clicked for article', article.dataset.turnId || article.dataset.testid);
+        };
 
-            const item = document.createElement('div');
-            item.title = text;
-            item.textContent = n + " " + text.split('\n')[0].slice(0, 50); // first line preview
-            item.style.cursor = 'pointer';
-            item.style.marginBottom = '6px';
-            item.style.borderBottom = '1px solid #333';
-            item.style.paddingBottom = '4px';
-
-            item.onclick = () => {
-                article.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            };
-
-            sidebar.appendChild(item);
-        }
+        article.appendChild(btn);
+    }
 
 
-        console.log('observer attaching');
+    function itemize(article) {
+        // Adds a quicklink to the "prompts" sidebar
+        if (seen.has(article)) return;
+        seen.add(article);
+
+        
+        const message = article.querySelector('[data-message-author-role="user"]');
+        if (!message) return;
+        const text = message.innerText.trim();
+        if (!text) return;
+
+        const testid = article.getAttribute('data-testid');
+        const n = testid ? Math.floor(Number(testid.split('-').pop()) / 2 + 1) + ". " : "";
+
+        const item = document.createElement('div');
+        item.title = text;
+
+            // TODO: ok maybe cut first 50 OR until first '.'
+
+        item.textContent = n + text.split('\n')[0].slice(0, 50); 
 
 
 
-        const observer = new MutationObserver((mutations) => {
-            console.log("MutationObserver fired! path: ", location.pathname);
-            if (current_path != location.pathname) {
-                console.log('path changed! old path:', current_path);
-                current_path = location.pathname;
-                console.log('new path: ', current_path);
-            }
-            for (const m of mutations) {
-                for (const node of m.addedNodes) {
-                    if (!(node instanceof HTMLElement)) continue;
+        item.style.cursor = 'pointer';
+        item.style.marginBottom = '6px';
+        item.style.borderBottom = '1px solid #333';
+        item.style.paddingBottom = '4px';
 
-                    // Direct article
-                    if (node.matches?.('article[data-turn="user"]')) {
-                        itemize(node)
-                    } else if (node.matches?.('article[data-turn="assistant"]')) {
-                        addStoreButton(node);
-                    }
+        item.onclick = () => {
+            article.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        };
+
+        prompt_list.appendChild(item);
+    }
+
+    function handle_mutations(mutations) {
+            
+        for (const m of mutations) {
+            for (const node of m.addedNodes) {
+                if (!(node instanceof HTMLElement)) continue;
+
+                // Direct article
+                if (node.matches?.('article[data-turn="user"]')) {
+                    itemize(node)
+                } else if (node.matches?.('article[data-turn="assistant"]')) {
+                    addStoreButton(node);
+                } else {
 
                     const prompts = node.querySelectorAll?.('article[data-turn="user"]');
 
@@ -136,14 +137,31 @@
                     for (const a of answers) {
                         addStoreButton(a);
                     }
+                }
             }
         }
+    }
+
+// Running logic starts here
+
+    waitForElement('#main', (main) => {
+        if (!sidebar.isConnected) {
+            document.body.appendChild(sidebar);
+        }
+        observer = new MutationObserver((mutations) => {
+            if (current_path != location.pathname) {
+                current_path = location.pathname;
+                prompt_list.replaceChildren();
+                seen = new WeakSet();
+            }
+            handle_mutations(mutations);
+        }); 
+
+        observer.observe(main, {
+            childList: true,
+            subtree: true
+        });
     });
 
-    observer.observe(main, {
-        childList: true,
-        subtree: true
-    });
-});
 
 })();
