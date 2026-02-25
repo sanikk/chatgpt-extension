@@ -5,21 +5,29 @@
 
     const sidebar = document.createElement('div');
     style_sidebar();
+    const store = document.createElement('div');
+    sidebar.appendChild(store);
+    const separator = document.createElement('div');
+    separator.innerHTML = `
+            <div style="font-weight:bold; margin-bottom:8px;">
+                Prompts
+            </div>`;
+    sidebar.appendChild(separator);
     const prompt_list = document.createElement('div');
+    
     sidebar.appendChild(prompt_list);
     document.body.appendChild(sidebar);
 
     let current_path = location.pathname;
-
     const dom_observer = new MutationObserver((mutations) => {
         handle_mutations(mutations);
     }); 
-
     dom_observer.observe(document.documentElement, {
         childList: true,
         subtree: true
     });
     if ('navigation' in window) {
+        // console.log(document.style);
         window.navigation.addEventListener("navigate", (event) => {
             handle_location_change();
         });
@@ -41,17 +49,12 @@
         sidebar.style.padding = '8px';
         sidebar.style.overflowY = 'auto';
         sidebar.style.fontSize = '12px';
-
-        sidebar.innerHTML = `
-            <div style="font-weight:bold; margin-bottom:8px;">
-                Prompts
-            </div>`;
     }
 
-    function addStoreButton(article) {
+    function addStoreButton(answer_node, prompt_node) {
         // Adds a "store" button to the answer
         // TODO: fill in the onclick functionality
-        if (article.querySelector('.tm-store-btn')) return;
+        if (answer_node.querySelector('.tm-store-btn')) return;
 
         const btn = document.createElement('button');
         btn.textContent = 'Store';
@@ -66,42 +69,48 @@
             console.log('Store clicked for article', article.dataset.turnId || article.dataset.testid);
         };
 
-        article.appendChild(btn);
+        answer_node.appendChild(btn);
     }
 
 
     function itemize(article) {
         // Adds a quicklink to the "prompts" sidebar
-        if (seen.has(article)) return;
-        seen.add(article);
 
-        
         const message = article.querySelector('[data-message-author-role="user"]');
+
+
+        console.log('data-message-id:' + message.getAttribute?.('data-message-id'));
         if (!message) return;
         const text = message.innerText.trim();
         if (!text) return;
-
+        // Get prompt number or ""
         const testid = article.getAttribute('data-testid');
         const n = testid ? Math.floor(Number(testid.split('-').pop()) / 2 + 1) + ". " : "";
 
         const item = document.createElement('div');
         item.title = text;
 
-        item.textContent = n + text.split('.')[0].slice(0, 50); 
-        item.style.cursor = 'pointer';
-        item.style.marginBottom = '6px';
-        item.style.borderBottom = '1px solid #333';
-        item.style.paddingBottom = '4px';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = n;
+        item.appendChild(checkbox);
 
-        item.onclick = () => {
+        const text_item = document.createElement('span');
+        text_item.textContent = n + text.split('.')[0].slice(0, 50); 
+        text_item.style.cursor = 'pointer';
+        text_item.style.marginBottom = '6px';
+        text_item.style.borderBottom = '1px solid #333';
+        text_item.style.paddingBottom = '4px';
+        text_item.onclick = () => {
             article.scrollIntoView({ behavior: 'smooth', block: 'center' });
         };
+        item.appendChild(text_item);
 
         prompt_list.appendChild(item);
     }
 
     function handle_location_change() {
-        // When URL changes we reset the sidebar and seen list.
+        // When URL changes, reset the sidebar and seen list.
         prompt_list.replaceChildren();
         seen = new WeakSet();
     }
@@ -112,21 +121,22 @@
             for (const node of m.addedNodes) {
                 if (!(node instanceof HTMLElement)) continue;
 
-                if (node.matches?.('article[data-turn="user"]')) {
-                    itemize(node)
-                } else if (node.matches?.('article[data-turn="assistant"]')) {
-                    addStoreButton(node);
-                } else {
+                if (seen.has(node)) continue;
 
-                    const prompts = node.querySelectorAll?.('article[data-turn="user"]');
-
-                    for (const a of prompts) {
-                        itemize(a)
+                if (node.matches?.('article')) {
+                    seen.add(node);
+                    if (node.getAttribute('data-turn') === 'user') {
+                        itemize(node);
                     }
+                } else {
+                    const articles = node.querySelectorAll?.('article');
+                    for (const a of articles) {
+                        if (seen.has(a)) continue;
 
-                    const answers = node.querySelectorAll?.('article[data-turn="assistant"]');
-                    for (const a of answers) {
-                        addStoreButton(a);
+                        seen.add(a);
+                        if (a.getAttribute('data-turn') === 'user') {
+                            itemize(a);
+                        }
                     }
                 }
             }
