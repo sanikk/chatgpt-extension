@@ -4,10 +4,17 @@
   "name": "ChatGPT Helper Dev",
   "version": "0.1",
   "description": "UI enhancements for chatgpt.com",
+  "host_permissions": [
+    "http://localhost:8000/*"
+  ],
+  "background": {
+    "scripts": ["background.js"]
+  },
   "content_scripts": [
     {
       "matches": ["https://chatgpt.com/*"],
       "js": ["content.js"],
+      "css": ["sidebar.css"],
       "run_at": "document_idle"
     }
   ]

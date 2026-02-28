@@ -4,9 +4,63 @@
     let seen = new WeakSet();
 
     const sidebar = document.createElement('div');
-    style_sidebar();
-    const store = document.createElement('div');
-    sidebar.appendChild(store);
+    sidebar.id = 'tm-jump-sidebar';
+
+    const controls_area = document.createElement('div');
+    const buttons_row = document.createElement('div');
+    const btnStore = document.createElement('button');
+    btnStore.textContent = 'Store';
+    btnStore.className = 'big-button';
+    const btnReset = document.createElement('button');
+    btnReset.textContent = 'Reset';
+    btnReset.className = 'big-button';
+    buttons_row.append(btnStore, btnReset);
+
+    const lists_row = document.createElement('div');
+    const listAvailable = document.createElement('select');
+    listAvailable.className = 'tag-list';
+    listAvailable.multiple = true;
+
+    const middleButtons = document.createElement('div');
+
+    const inputTag = document.createElement('input');
+    inputTag.type = 'text';
+    inputTag.placeholder = 'New tag';
+    inputTag.maxLength = 64;
+    inputTag.id = 'tag-input';
+
+    const btnCreate = document.createElement('button');
+    btnCreate.textContent = 'Create';
+    btnCreate.className = 'tag-button';
+    btnCreate.addEventListener('click', async () => { 
+        const tag = inputTag.value.trim();
+        if (!tag) return;
+        const ret = await browser.runtime.sendMessage({
+            type: 'createTag',
+            name: tag
+        });
+        if (ret) {
+            optionize_tag(ret);
+        }
+        inputTag.value = '';
+    });
+
+    const btnAdd = document.createElement('button');
+    btnAdd.textContent = 'Add →';
+    btnAdd.className = 'tag-button';
+    const btnRemove = document.createElement('button');
+    btnRemove.textContent = '← Remove';
+    btnRemove.className = 'tag-button';
+    middleButtons.append(btnCreate, inputTag, btnAdd, btnRemove);
+
+    const listPicked = document.createElement('select');
+    listPicked.className = 'tag-list';
+    listPicked.multiple = true;
+
+    lists_row.append(listAvailable, middleButtons, listPicked);
+    controls_area.append(buttons_row, lists_row);
+    sidebar.appendChild(controls_area);
+
     const separator = document.createElement('div');
     separator.innerHTML = `
             <div style="font-weight:bold; margin-bottom:8px;">
@@ -18,6 +72,7 @@
     sidebar.appendChild(prompt_list);
     document.body.appendChild(sidebar);
 
+
     let current_path = location.pathname;
     const dom_observer = new MutationObserver((mutations) => {
         handle_mutations(mutations);
@@ -27,68 +82,48 @@
         subtree: true
     });
     if ('navigation' in window) {
-        // console.log(document.style);
         window.navigation.addEventListener("navigate", (event) => {
             handle_location_change();
         });
     }
+    loadTags();
 
-    function style_sidebar() {
-        // Styles the "prompts" sidebar
-
-        sidebar.id = 'tm-jump-sidebar';
-
-        sidebar.style.position = 'fixed';
-        sidebar.style.top = '0';
-        sidebar.style.right = '0';
-        sidebar.style.width = '260px';
-        sidebar.style.height = '100vh';
-        sidebar.style.background = '#111';
-        sidebar.style.color = '#eee';
-        sidebar.style.zIndex = '9999';
-        sidebar.style.padding = '8px';
-        sidebar.style.overflowY = 'auto';
-        sidebar.style.fontSize = '12px';
+    function optionize_tag(tag) {
+        // Makes a tag row into an <option> for <select>
+            const { id, name } = tag;
+            const opt = document.createElement('option');
+            opt.value = id;
+            opt.textContent = name;
+            listAvailable.appendChild(opt);
     }
 
-    function addStoreButton(answer_node, prompt_node) {
-        // Adds a "store" button to the answer
-        // TODO: fill in the onclick functionality
-        if (answer_node.querySelector('.tm-store-btn')) return;
+    async function loadTags() {
+        // Loads tags from the backend
+        try {
+            listAvailable.replaceChildren();
+            const tags = await browser.runtime.sendMessage({ type: "getTags" });
 
-        const btn = document.createElement('button');
-        btn.textContent = 'Store';
-        btn.className = 'tm-store-btn';
-
-        btn.style.margin = '4px';
-        btn.style.padding = '2px 6px';
-        btn.style.fontSize = '12px';
-        btn.style.cursor = 'pointer';
-
-        btn.onclick = () => {
-            console.log('Store clicked for article', article.dataset.turnId || article.dataset.testid);
-        };
-
-        answer_node.appendChild(btn);
+            for (const tag of tags) {
+                optionize_tag(tag);
+            }
+        } catch (err) {
+            console.error('Failed to load tags:', err);
+        }
     }
-
 
     function itemize(article) {
         // Adds a quicklink to the "prompts" sidebar
 
-        const message = article.querySelector('[data-message-author-role="user"]');
-
-
-        console.log('data-message-id:' + message.getAttribute?.('data-message-id'));
-        if (!message) return;
-        const text = message.innerText.trim();
-        if (!text) return;
-        // Get prompt number or ""
-        const testid = article.getAttribute('data-testid');
-        const n = testid ? Math.floor(Number(testid.split('-').pop()) / 2 + 1) + ". " : "";
+        const prompt = article.querySelector('[data-message-author-role="user"]');
+        if (!prompt) return;
+        const prompt_text = prompt.innerText.trim();
+        if (!prompt_text) return;
 
         const item = document.createElement('div');
-        item.title = text;
+        item.title = prompt_text;
+        // const data_message_id = prompt.getAttribute?.('data-message-id'));
+        const testid = article.getAttribute('data-testid');
+        const n = testid ? Math.floor(Number(testid.split('-').pop()) / 2 + 1) + ". " : "";
 
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
@@ -96,11 +131,8 @@
         item.appendChild(checkbox);
 
         const text_item = document.createElement('span');
-        text_item.textContent = n + text.split('.')[0].slice(0, 50); 
-        text_item.style.cursor = 'pointer';
-        text_item.style.marginBottom = '6px';
-        text_item.style.borderBottom = '1px solid #333';
-        text_item.style.paddingBottom = '4px';
+
+        text_item.textContent = n + prompt_text.split('.')[0].slice(0, 50); 
         text_item.onclick = () => {
             article.scrollIntoView({ behavior: 'smooth', block: 'center' });
         };
